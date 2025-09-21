@@ -2,6 +2,14 @@
 
 const std = @import("std");
 const checker = @import("checker.zig");
+const constants = @import("constants.zig");
+
+/// Convert a binary checksum to hex string
+fn checksumToHex(allocator: std.mem.Allocator, checksum: [constants.HASH_DIGEST_LENGTH]u8) ![]u8 {
+    const hex_string = try allocator.alloc(u8, constants.HASH_HEX_LENGTH);
+    _ = try std.fmt.bufPrint(hex_string, "{}", .{std.fmt.fmtSliceHexLower(&checksum)});
+    return hex_string;
+}
 
 /// Report check results to the user in a human-readable format
 pub fn reportCheckResults(result: *const checker.CheckResult) void {
@@ -11,7 +19,7 @@ pub fn reportCheckResults(result: *const checker.CheckResult) void {
         return;
     }
 
-    std.debug.print("⚠  Integrity violations detected!\n", .{});
+    std.debug.print("Integrity violations detected!\n", .{});
     std.debug.print("Found {} change(s) in {} files\n", .{ result.changes.items.len, result.current_records });
     std.debug.print("\n", .{});
 
@@ -62,9 +70,12 @@ pub fn generateJsonReport(allocator: std.mem.Allocator, result: *const checker.C
         type: []const u8,
         path: []const u8,
         details: []const u8,
+        old_checksum: ?[]const u8 = null, // For modified files
+        new_checksum: ?[]const u8 = null, // For modified files
     };
 
     const Report = struct {
+        timestamp: i64, // Unix timestamp in seconds
         has_changes: bool,
         total_files_checked: u32,
         baseline_records: u32,
@@ -75,18 +86,48 @@ pub fn generateJsonReport(allocator: std.mem.Allocator, result: *const checker.C
 
     // Prepare changes array
     var changes_list = try allocator.alloc(ChangeReport, result.changes.items.len);
-    defer allocator.free(changes_list);
+    defer {
+        // Clean up allocated checksum strings
+        for (changes_list) |change_report| {
+            if (change_report.old_checksum) |old| allocator.free(old);
+            if (change_report.new_checksum) |new| allocator.free(new);
+        }
+        allocator.free(changes_list);
+    }
 
     for (result.changes.items, 0..) |change, i| {
+        var old_checksum: ?[]const u8 = null;
+        var new_checksum: ?[]const u8 = null;
+
+        // For modified files, extract checksums from old and new records
+        if (change.change_type == .modified) {
+            if (change.old_record) |old_record| {
+                if (old_record == .file) {
+                    old_checksum = try checksumToHex(allocator, old_record.file.checksum);
+                }
+            }
+            if (change.new_record) |new_record| {
+                if (new_record == .file) {
+                    new_checksum = try checksumToHex(allocator, new_record.file.checksum);
+                }
+            }
+        }
+
         changes_list[i] = ChangeReport{
             .type = @tagName(change.change_type),
             .path = change.path,
             .details = change.details,
+            .old_checksum = old_checksum,
+            .new_checksum = new_checksum,
         };
     }
 
+    // Get current timestamp
+    const timestamp = std.time.timestamp();
+
     // Create the report struct
     const report = Report{
+        .timestamp = timestamp,
         .has_changes = result.hasChanges(),
         .total_files_checked = result.total_files_checked,
         .baseline_records = result.baseline_records,
@@ -161,9 +202,103 @@ test "JSON report generation" {
     const json_report = try generateJsonReport(testing.allocator, &result);
     defer testing.allocator.free(json_report);
 
-    // Verify JSON contains expected fields
+    // Verify JSON contains expected fields including new timestamp
+    try testing.expect(std.mem.indexOf(u8, json_report, "timestamp") != null);
     try testing.expect(std.mem.indexOf(u8, json_report, "has_changes") != null);
     try testing.expect(std.mem.indexOf(u8, json_report, "baseline_records") != null);
     try testing.expect(std.mem.indexOf(u8, json_report, "changes") != null);
     try testing.expect(std.mem.indexOf(u8, json_report, "/test/changed.txt") != null);
+}
+
+test "JSON report with checksums for modified files" {
+    const records = @import("records.zig");
+    var result = checker.CheckResult.init(testing.allocator);
+    defer result.deinit();
+
+    result.baseline_records = 1;
+    result.current_records = 1;
+    result.total_files_checked = 1;
+
+    // Create file records with different checksums
+    const old_record = records.Record{
+        .file = records.FileRecord{
+            .path = try testing.allocator.dupe(u8, "/test/modified.txt"),
+            .inode = 123,
+            .dev = 456,
+            .size = 1024,
+            .mode = 0o644,
+            .uid = 1000,
+            .gid = 1000,
+            .nlink = 1,
+            .mtime = 1609459200,
+            .ctime = 1609459200,
+            .checksum = [_]u8{ 0x01, 0x02, 0x03 } ++ [_]u8{0x00} ** 29, // Old checksum
+        },
+    };
+
+    const new_record = records.Record{
+        .file = records.FileRecord{
+            .path = try testing.allocator.dupe(u8, "/test/modified.txt"),
+            .inode = 123,
+            .dev = 456,
+            .size = 1024,
+            .mode = 0o644,
+            .uid = 1000,
+            .gid = 1000,
+            .nlink = 1,
+            .mtime = 1609459200,
+            .ctime = 1609459200,
+            .checksum = [_]u8{ 0x04, 0x05, 0x06 } ++ [_]u8{0x00} ** 29, // New checksum
+        },
+    };
+
+    const change = checker.Change{
+        .change_type = .modified,
+        .path = try testing.allocator.dupe(u8, "/test/modified.txt"),
+        .old_record = old_record,
+        .new_record = new_record,
+        .details = try testing.allocator.dupe(u8, "Content changed (checksum mismatch)"),
+    };
+
+    try result.addChange(change);
+
+    const json_report = try generateJsonReport(testing.allocator, &result);
+    defer testing.allocator.free(json_report);
+
+    // Verify JSON contains checksum fields for modified files
+    try testing.expect(std.mem.indexOf(u8, json_report, "old_checksum") != null);
+    try testing.expect(std.mem.indexOf(u8, json_report, "new_checksum") != null);
+    try testing.expect(std.mem.indexOf(u8, json_report, "010203") != null); // Hex representation of old checksum start
+    try testing.expect(std.mem.indexOf(u8, json_report, "040506") != null); // Hex representation of new checksum start
+}
+
+test "JSON report timestamp is current" {
+    var result = checker.CheckResult.init(testing.allocator);
+    defer result.deinit();
+
+    result.baseline_records = 1;
+    result.current_records = 1;
+    result.total_files_checked = 1;
+
+    const before_timestamp = std.time.timestamp();
+
+    const json_report = try generateJsonReport(testing.allocator, &result);
+    defer testing.allocator.free(json_report);
+
+    const after_timestamp = std.time.timestamp();
+
+    // Parse JSON to verify timestamp is reasonable
+    const parsed = std.json.parseFromSlice(std.json.Value, testing.allocator, json_report, .{}) catch |err| {
+        std.debug.print("Failed to parse JSON: {}\n", .{err});
+        std.debug.print("JSON content: {s}\n", .{json_report});
+        return err;
+    };
+    defer parsed.deinit();
+
+    const timestamp_value = parsed.value.object.get("timestamp").?;
+    const report_timestamp = timestamp_value.integer;
+
+    // Verify timestamp is within reasonable range (within a few seconds of generation)
+    try testing.expect(report_timestamp >= before_timestamp);
+    try testing.expect(report_timestamp <= after_timestamp + 1); // Allow 1 second tolerance
 }

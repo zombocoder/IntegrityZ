@@ -248,50 +248,52 @@ fn compareRecords(allocator: std.mem.Allocator, baseline: *const records.Record,
         .file => |baseline_file| {
             const current_file = current.file;
 
+            // Check for any file changes and consolidate into a single change record
+            var change_details = std.ArrayList([]const u8).init(allocator);
+            defer {
+                for (change_details.items) |detail| {
+                    allocator.free(detail);
+                }
+                change_details.deinit();
+            }
+
+            var has_changes = false;
+
             // Check file content (checksum)
             if (!std.mem.eql(u8, &baseline_file.checksum, &current_file.checksum)) {
-                const change = Change{
-                    .change_type = .modified,
-                    .path = try allocator.dupe(u8, path),
-                    .old_record = try duplicateRecord(allocator, baseline),
-                    .new_record = try duplicateRecord(allocator, current),
-                    .details = try std.fmt.allocPrint(allocator, "File content changed (checksum mismatch)", .{}),
-                };
-                try changes.append(change);
+                has_changes = true;
+                try change_details.append(try std.fmt.allocPrint(allocator, "Content changed (checksum mismatch)", .{}));
             }
 
             // Check file size
             if (baseline_file.size != current_file.size) {
-                const change = Change{
-                    .change_type = .modified,
-                    .path = try allocator.dupe(u8, path),
-                    .old_record = try duplicateRecord(allocator, baseline),
-                    .new_record = try duplicateRecord(allocator, current),
-                    .details = try std.fmt.allocPrint(allocator, "File size changed from {} to {} bytes", .{ baseline_file.size, current_file.size }),
-                };
-                try changes.append(change);
+                has_changes = true;
+                try change_details.append(try std.fmt.allocPrint(allocator, "Size changed from {} to {} bytes", .{ baseline_file.size, current_file.size }));
             }
 
             // Check permissions
             if (baseline_file.mode != current_file.mode) {
-                const change = Change{
-                    .change_type = .modified,
-                    .path = try allocator.dupe(u8, path),
-                    .old_record = try duplicateRecord(allocator, baseline),
-                    .new_record = try duplicateRecord(allocator, current),
-                    .details = try std.fmt.allocPrint(allocator, "File permissions changed from 0o{o} to 0o{o}", .{ baseline_file.mode, current_file.mode }),
-                };
-                try changes.append(change);
+                has_changes = true;
+                try change_details.append(try std.fmt.allocPrint(allocator, "Permissions changed from 0o{o} to 0o{o}", .{ baseline_file.mode, current_file.mode }));
             }
 
             // Check modification time
             if (baseline_file.mtime != current_file.mtime) {
+                has_changes = true;
+                try change_details.append(try std.fmt.allocPrint(allocator, "Modification time changed", .{}));
+            }
+
+            // If any changes detected, create a single consolidated change record
+            if (has_changes) {
+                // Join all details with "; "
+                const details = try std.mem.join(allocator, "; ", change_details.items);
+
                 const change = Change{
                     .change_type = .modified,
                     .path = try allocator.dupe(u8, path),
                     .old_record = try duplicateRecord(allocator, baseline),
                     .new_record = try duplicateRecord(allocator, current),
-                    .details = try std.fmt.allocPrint(allocator, "File modification time changed", .{}),
+                    .details = details,
                 };
                 try changes.append(change);
             }
@@ -505,4 +507,167 @@ test "duplicateRecord file record" {
     try testing.expectEqual(original.file.size, duplicate.file.size);
     try testing.expectEqual(original.file.mode, duplicate.file.mode);
     try testing.expect(std.mem.eql(u8, &original.file.checksum, &duplicate.file.checksum));
+}
+
+test "compareRecords file with single change" {
+    const allocator = testing.allocator;
+
+    const baseline = records.Record{ .file = records.FileRecord{
+        .path = try allocator.dupe(u8, "/test/file.txt"),
+        .inode = 123,
+        .dev = 456,
+        .size = 1024,
+        .mode = 0o644,
+        .uid = 1000,
+        .gid = 1000,
+        .nlink = 1,
+        .mtime = 1609459200,
+        .ctime = 1609459200,
+        .checksum = [_]u8{0x01} ** 32,
+    } };
+    defer {
+        var base = baseline;
+        base.deinit(allocator);
+    }
+
+    const current = records.Record{
+        .file = records.FileRecord{
+            .path = try allocator.dupe(u8, "/test/file.txt"),
+            .inode = 123,
+            .dev = 456,
+            .size = 2048, // Size changed
+            .mode = 0o644,
+            .uid = 1000,
+            .gid = 1000,
+            .nlink = 1,
+            .mtime = 1609459200,
+            .ctime = 1609459200,
+            .checksum = [_]u8{0x01} ** 32,
+        },
+    };
+    defer {
+        var curr = current;
+        curr.deinit(allocator);
+    }
+
+    const changes = try compareRecords(allocator, &baseline, &current);
+    defer {
+        for (changes) |*change| {
+            change.deinit(allocator);
+        }
+        allocator.free(changes);
+    }
+
+    try testing.expectEqual(@as(usize, 1), changes.len);
+    try testing.expectEqual(ChangeType.modified, changes[0].change_type);
+    try testing.expect(std.mem.indexOf(u8, changes[0].details, "Size changed from 1024 to 2048 bytes") != null);
+}
+
+test "compareRecords file with multiple changes consolidated" {
+    const allocator = testing.allocator;
+
+    const baseline = records.Record{ .file = records.FileRecord{
+        .path = try allocator.dupe(u8, "/test/file.txt"),
+        .inode = 123,
+        .dev = 456,
+        .size = 1024,
+        .mode = 0o644,
+        .uid = 1000,
+        .gid = 1000,
+        .nlink = 1,
+        .mtime = 1609459200,
+        .ctime = 1609459200,
+        .checksum = [_]u8{0x01} ** 32,
+    } };
+    defer {
+        var base = baseline;
+        base.deinit(allocator);
+    }
+
+    const current = records.Record{
+        .file = records.FileRecord{
+            .path = try allocator.dupe(u8, "/test/file.txt"),
+            .inode = 123,
+            .dev = 456,
+            .size = 2048, // Size changed
+            .mode = 0o755, // Permissions changed
+            .uid = 1000,
+            .gid = 1000,
+            .nlink = 1,
+            .mtime = 1609459300, // Mtime changed
+            .ctime = 1609459200,
+            .checksum = [_]u8{0x02} ** 32, // Checksum changed
+        },
+    };
+    defer {
+        var curr = current;
+        curr.deinit(allocator);
+    }
+
+    const changes = try compareRecords(allocator, &baseline, &current);
+    defer {
+        for (changes) |*change| {
+            change.deinit(allocator);
+        }
+        allocator.free(changes);
+    }
+
+    // Should consolidate all changes into a single change record
+    try testing.expectEqual(@as(usize, 1), changes.len);
+    try testing.expectEqual(ChangeType.modified, changes[0].change_type);
+
+    // Check that all change types are mentioned in the consolidated details
+    try testing.expect(std.mem.indexOf(u8, changes[0].details, "Content changed") != null);
+    try testing.expect(std.mem.indexOf(u8, changes[0].details, "Size changed from 1024 to 2048 bytes") != null);
+    try testing.expect(std.mem.indexOf(u8, changes[0].details, "Permissions changed from 0o644 to 0o755") != null);
+    try testing.expect(std.mem.indexOf(u8, changes[0].details, "Modification time changed") != null);
+
+    // Check that details are properly joined with "; "
+    try testing.expect(std.mem.indexOf(u8, changes[0].details, "; ") != null);
+}
+
+test "compareRecords file with no changes" {
+    const allocator = testing.allocator;
+
+    const baseline = records.Record{ .file = records.FileRecord{
+        .path = try allocator.dupe(u8, "/test/file.txt"),
+        .inode = 123,
+        .dev = 456,
+        .size = 1024,
+        .mode = 0o644,
+        .uid = 1000,
+        .gid = 1000,
+        .nlink = 1,
+        .mtime = 1609459200,
+        .ctime = 1609459200,
+        .checksum = [_]u8{0x01} ** 32,
+    } };
+    defer {
+        var base = baseline;
+        base.deinit(allocator);
+    }
+
+    const current = records.Record{ .file = records.FileRecord{
+        .path = try allocator.dupe(u8, "/test/file.txt"),
+        .inode = 123,
+        .dev = 456,
+        .size = 1024,
+        .mode = 0o644,
+        .uid = 1000,
+        .gid = 1000,
+        .nlink = 1,
+        .mtime = 1609459200,
+        .ctime = 1609459200,
+        .checksum = [_]u8{0x01} ** 32,
+    } };
+    defer {
+        var curr = current;
+        curr.deinit(allocator);
+    }
+
+    const changes = try compareRecords(allocator, &baseline, &current);
+    defer allocator.free(changes);
+
+    // Should return no changes when files are identical
+    try testing.expectEqual(@as(usize, 0), changes.len);
 }

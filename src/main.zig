@@ -14,6 +14,7 @@ const constants = @import("constants.zig");
 const checker = @import("checker.zig");
 const reporter = @import("reporter.zig");
 const config = @import("config.zig");
+const watcher = @import("watcher.zig");
 
 /// Main entry point for the IntegrityZ application
 /// Parses command-line arguments and dispatches to appropriate handlers
@@ -71,6 +72,7 @@ fn printUsage() void {
     print("\nOptions:\n", .{});
     print("  --json                            - Output results in JSON format\n", .{});
     print("  --init                            - Create default configuration file\n", .{});
+    print("\nNote: Watch mode settings (webhook URL, intervals) are configured via config file\n", .{});
 }
 
 /// Handles the 'init' command to create a new filesystem baseline
@@ -179,15 +181,68 @@ fn handleCheck(allocator: std.mem.Allocator, app_config: *const config.Config, a
 
 /// Handles the 'watch' command for real-time filesystem monitoring
 ///
-/// TODO: This function is not yet implemented. It should set up filesystem
-/// watchers to monitor changes in real-time and alert on modifications.
+/// Sets up cross-platform filesystem watchers to monitor changes in real-time
+/// and perform integrity checks when modifications are detected. Uses webhook
+/// settings from configuration file for notifications.
 ///
-/// @param allocator Memory allocator (currently unused)
+/// @param allocator Memory allocator for dynamic allocations
+/// @param app_config Application configuration
 /// @param args Additional command arguments (currently unused)
-fn handleWatch(_: std.mem.Allocator, _: *const config.Config, _: [][]const u8) !void {
-    print("Starting realtime filesystem monitoring...\n", .{});
-    // TODO: Implement realtime monitoring
-    print("Realtime monitoring not yet implemented\n", .{});
+fn handleWatch(allocator: std.mem.Allocator, app_config: *const config.Config, args: [][]const u8) !void {
+    _ = args; // Unused for now
+
+    // Use default scan paths from config
+    const watch_paths = app_config.default_scan_paths.items;
+
+    if (watch_paths.len == 0) {
+        print("Error: No paths specified for monitoring\n", .{});
+        print("Set default_scan_path in config file or run 'integrityz init <paths>' first\n", .{});
+        return;
+    }
+
+    // Check if baseline exists
+    const baseline_path = app_config.baseline_path;
+    std.fs.cwd().access(baseline_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            print("Error: Baseline file not found: {s}\n", .{baseline_path});
+            print("Run 'integrityz init <paths>' to create a baseline first.\n", .{});
+            return;
+        },
+        else => return err,
+    };
+
+    // Configure watch settings from config file
+    const watch_config = watcher.WatchConfig{
+        .watch_paths = watch_paths,
+        .recursive = app_config.watch_recursive,
+        .webhook_url = app_config.webhook_url,
+        .webhook_timeout = app_config.webhook_timeout,
+        .check_interval = app_config.watch_check_interval,
+        .max_event_batch = app_config.watch_max_event_batch,
+    };
+
+    // Initialize and start watcher
+    var fs_watcher = watcher.Watcher.init(allocator, app_config, watch_config) catch |err| {
+        print("Error initializing filesystem watcher: {}\n", .{err});
+        return;
+    };
+    defer fs_watcher.deinit();
+
+    // Initialize platform-specific watcher after Watcher is in final memory location
+    fs_watcher.initPlatform() catch |err| {
+        print("Error initializing platform-specific watcher: {}\n", .{err});
+        return;
+    };
+
+    // Start monitoring (simplified for initial implementation)
+    print("Starting watch mode. Press Ctrl+C to stop.\n", .{});
+
+    fs_watcher.watch() catch |err| {
+        print("Watch error: {}\n", .{err});
+        return;
+    };
+
+    print("\nShutdown complete.\n", .{});
 }
 
 /// Handles the 'config' command to show or initialize configuration
@@ -232,6 +287,21 @@ fn handleConfig(_: std.mem.Allocator, app_config: *const config.Config, args: []
             print("  {s}\n", .{path});
         }
     }
+
+    // Display webhook settings
+    print("\nWebhook settings:\n", .{});
+    if (app_config.webhook_url) |url| {
+        print("  URL: {s}\n", .{url});
+    } else {
+        print("  URL: (not configured)\n", .{});
+    }
+    print("  Timeout: {} seconds\n", .{app_config.webhook_timeout});
+
+    // Display watch mode settings
+    print("\nWatch mode settings:\n", .{});
+    print("  Check interval: {} seconds\n", .{app_config.watch_check_interval});
+    print("  Max event batch: {}\n", .{app_config.watch_max_event_batch});
+    print("  Recursive monitoring: {}\n", .{app_config.watch_recursive});
 
     print("\nConfiguration file: {s}\n", .{config.DEFAULT_CONFIG_FILENAME});
 }

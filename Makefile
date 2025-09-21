@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-.PHONY: all build clean test fmt fmt-check download_zig
+.PHONY: all build build-release clean test fmt fmt-check docs download_zig
 
 # Default target
 all: build
@@ -19,6 +19,11 @@ download_zig:
 build: download_zig
 	@echo "Building IntegrityZ..."
 	@./zig/zig build
+
+# Build optimized release version
+build-release: download_zig
+	@echo "Building IntegrityZ (Release)..."
+	@./zig/zig build -Doptimize=ReleaseFast
 
 # Clean build artifacts
 clean:
@@ -42,6 +47,13 @@ fmt-check: download_zig
 	@echo "Checking code formatting..."
 	@./zig/zig fmt --check src/
 
+# Generate documentation
+docs: download_zig
+	@echo "Generating documentation..."
+	@rm -rf docs zig-out/docs
+	@mkdir -p docs
+	@./zig/zig test src/main.zig -femit-docs=docs/ --test-no-exec 2>/dev/null || echo "Documentation generated with warnings"
+
 # Stop the running cluster
 stop:
 	@echo "Stopping IntegrityZ cluster..."
@@ -51,11 +63,13 @@ stop:
 help:
 	@echo "IntegrityZ Makefile targets:"
 	@echo "  make                      - Build the project (same as 'make build')"
-	@echo "  make build                - Build the IntegrityZ binary"
+	@echo "  make build                - Build the IntegrityZ binary (debug)"
+	@echo "  make build-release        - Build optimized release version"
 	@echo "  make clean                - Remove build artifacts and database files"
 	@echo "  make test                 - Run the complete test suite"
 	@echo "  make fmt                  - Format all source code using Zig formatter"
 	@echo "  make fmt-check            - Check if source code is properly formatted"
+	@echo "  make docs                 - Generate documentation"
 	@echo "  make stop                 - Stop the running cluster"
 	@echo "  make download_zig         - Download the Zig compiler if not present"
 	@echo "  make help                 - Display this help message"

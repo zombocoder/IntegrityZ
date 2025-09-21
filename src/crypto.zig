@@ -15,14 +15,15 @@ const StorageType = enum {
 fn detectStorageType(file_path: []const u8) StorageType {
     // Basic heuristics for storage type detection
     // In a real implementation, this could use platform-specific APIs
-    
-    if (std.mem.startsWith(u8, file_path, "/mnt/") or 
+
+    if (std.mem.startsWith(u8, file_path, "/mnt/") or
         std.mem.startsWith(u8, file_path, "/media/") or
-        std.mem.startsWith(u8, file_path, "//") or  // UNC paths on Windows
-        std.mem.indexOf(u8, file_path, "nfs") != null) {
+        std.mem.startsWith(u8, file_path, "//") or // UNC paths on Windows
+        std.mem.indexOf(u8, file_path, "nfs") != null)
+    {
         return .network;
     }
-    
+
     // For now, assume SSD for most modern systems
     // This could be enhanced with actual hardware detection
     return .ssd;
@@ -36,13 +37,12 @@ fn getOptimalBufferSize(storage_type: StorageType, file_size: u64) usize {
         .network => constants.STORAGE_BUFFER_SIZES.NETWORK_BUFFER_SIZE,
         .unknown => constants.STORAGE_BUFFER_SIZES.DEFAULT_BUFFER_SIZE,
     };
-    
+
     // For very large files, increase buffer size up to a reasonable limit
     if (file_size > constants.PERFORMANCE_THRESHOLDS.LARGE_FILE_SIZE) {
-        return @min(base_size * constants.STORAGE_BUFFER_SIZES.LARGE_FILE_MULTIPLIER, 
-                   constants.STORAGE_BUFFER_SIZES.MAX_BUFFER_SIZE);
+        return @min(base_size * constants.STORAGE_BUFFER_SIZES.LARGE_FILE_MULTIPLIER, constants.STORAGE_BUFFER_SIZES.MAX_BUFFER_SIZE);
     }
-    
+
     return base_size;
 }
 
@@ -207,7 +207,7 @@ test "detectStorageType correctly identifies storage types" {
     try std.testing.expectEqual(StorageType.network, detectStorageType("/media/usb/file.txt"));
     try std.testing.expectEqual(StorageType.network, detectStorageType("//server/share/file.txt"));
     try std.testing.expectEqual(StorageType.network, detectStorageType("/home/user/nfs/file.txt"));
-    
+
     // Test SSD default detection
     try std.testing.expectEqual(StorageType.ssd, detectStorageType("/home/user/file.txt"));
     try std.testing.expectEqual(StorageType.ssd, detectStorageType("/var/log/app.log"));
@@ -217,74 +217,71 @@ test "getOptimalBufferSize returns correct buffer sizes" {
     // Test SSD buffer sizing
     const ssd_buffer = getOptimalBufferSize(StorageType.ssd, 1024 * 1024); // 1MB file
     try std.testing.expectEqual(constants.STORAGE_BUFFER_SIZES.SSD_BUFFER_SIZE, ssd_buffer);
-    
+
     // Test HDD buffer sizing
     const hdd_buffer = getOptimalBufferSize(StorageType.hdd, 1024 * 1024);
     try std.testing.expectEqual(constants.STORAGE_BUFFER_SIZES.HDD_BUFFER_SIZE, hdd_buffer);
-    
+
     // Test network buffer sizing
     const network_buffer = getOptimalBufferSize(StorageType.network, 1024 * 1024);
     try std.testing.expectEqual(constants.STORAGE_BUFFER_SIZES.NETWORK_BUFFER_SIZE, network_buffer);
-    
+
     // Test large file optimization
     const large_file_buffer = getOptimalBufferSize(StorageType.ssd, constants.PERFORMANCE_THRESHOLDS.LARGE_FILE_SIZE + 1);
-    const expected_large = @min(
-        constants.STORAGE_BUFFER_SIZES.SSD_BUFFER_SIZE * constants.STORAGE_BUFFER_SIZES.LARGE_FILE_MULTIPLIER,
-        constants.STORAGE_BUFFER_SIZES.MAX_BUFFER_SIZE
-    );
+    const expected_large = @min(constants.STORAGE_BUFFER_SIZES.SSD_BUFFER_SIZE * constants.STORAGE_BUFFER_SIZES.LARGE_FILE_MULTIPLIER, constants.STORAGE_BUFFER_SIZES.MAX_BUFFER_SIZE);
     try std.testing.expectEqual(expected_large, large_file_buffer);
 }
 
 test "blake3HashFileAdaptive produces same results as blake3HashFile" {
     const allocator = std.testing.allocator;
-    
+
     // Create a temporary file for testing
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    
+
     const test_data = "Hello, IntegrityZ adaptive hashing!";
     const file_path = "test_adaptive.txt";
-    
+
     // Write test data to file
     try tmp.dir.writeFile(.{ .sub_path = file_path, .data = test_data });
-    
+
     // Get absolute path for testing
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
-    
+
     const full_path = try std.fs.path.join(allocator, &[_][]const u8{ tmp_path, file_path });
     defer allocator.free(full_path);
-    
+
     // Test that both functions produce the same hash
     const hash_regular = try blake3HashFile(full_path, allocator);
     const hash_adaptive = try blake3HashFileAdaptive(full_path, allocator);
-    
+
     try std.testing.expectEqual(hash_regular, hash_adaptive);
 }
 
 test "blake3HashFileAdaptive handles small files correctly" {
     const allocator = std.testing.allocator;
-    
+
     // Create a temporary file for testing
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    
+
     const small_data = "small";
     const file_path = "small_test.txt";
-    
+
     try tmp.dir.writeFile(.{ .sub_path = file_path, .data = small_data });
-    
+
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
-    
+
     const full_path = try std.fs.path.join(allocator, &[_][]const u8{ tmp_path, file_path });
     defer allocator.free(full_path);
-    
+
     const hash = try blake3HashFileAdaptive(full_path, allocator);
-    
+
     // Verify the hash is correct
     try std.testing.expectEqual(constants.HASH_DIGEST_LENGTH, hash.len);
-    
+
     // Compare with direct hashing of the data
     const expected_hash = blake3Hash(small_data);
     try std.testing.expectEqual(expected_hash, hash);
@@ -292,28 +289,28 @@ test "blake3HashFileAdaptive handles small files correctly" {
 
 test "blake3HashFileAdaptive handles large files correctly" {
     const allocator = std.testing.allocator;
-    
+
     // Create a temporary file for testing
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    
+
     // Create a larger data buffer
     const large_data = "X" ** (constants.SMALL_FILE_THRESHOLD + 1000); // Slightly larger than threshold
     const file_path = "large_test.txt";
-    
+
     try tmp.dir.writeFile(.{ .sub_path = file_path, .data = large_data });
-    
+
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
-    
+
     const full_path = try std.fs.path.join(allocator, &[_][]const u8{ tmp_path, file_path });
     defer allocator.free(full_path);
-    
+
     const hash = try blake3HashFileAdaptive(full_path, allocator);
-    
+
     // Verify the hash is correct
     try std.testing.expectEqual(constants.HASH_DIGEST_LENGTH, hash.len);
-    
+
     // Should match the regular file hashing result
     const expected_hash = try blake3HashFile(full_path, allocator);
     try std.testing.expectEqual(expected_hash, hash);

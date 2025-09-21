@@ -72,7 +72,7 @@ const WorkQueue = struct {
     fn finish(self: *Self) void {
         self.mutex.lock();
         defer self.mutex.unlock();
-        
+
         self.finished = true;
         self.condition.broadcast();
     }
@@ -105,15 +105,13 @@ const WorkerContext = struct {
             if (job.is_directory) {
                 context.processDirectory(job.path) catch |err| {
                     if (@import("builtin").mode == .Debug) {
-                        std.debug.print("[DEBUG] Worker {}: Error processing directory {s}: {}\n", 
-                                      .{ context.worker_id, job.path, err });
+                        std.debug.print("[DEBUG] Worker {}: Error processing directory {s}: {}\n", .{ context.worker_id, job.path, err });
                     }
                 };
             } else {
                 context.processFile(job.path) catch |err| {
                     if (@import("builtin").mode == .Debug) {
-                        std.debug.print("[DEBUG] Worker {}: Error processing file {s}: {}\n", 
-                                      .{ context.worker_id, job.path, err });
+                        std.debug.print("[DEBUG] Worker {}: Error processing file {s}: {}\n", .{ context.worker_id, job.path, err });
                     }
                 };
             }
@@ -126,8 +124,7 @@ const WorkerContext = struct {
         // Create directory record
         const dir_record = createDirRecord(self.allocator, path) catch |err| {
             if (@import("builtin").mode == .Debug) {
-                std.debug.print("[DEBUG] Worker {}: Failed to create dir record for {s}: {}\n", 
-                              .{ self.worker_id, path, err });
+                std.debug.print("[DEBUG] Worker {}: Failed to create dir record for {s}: {}\n", .{ self.worker_id, path, err });
             }
             return;
         };
@@ -141,7 +138,7 @@ const WorkerContext = struct {
         var iterator = dir.iterate();
         while (iterator.next() catch null) |entry| {
             const full_path = std.fs.path.join(self.allocator, &[_][]const u8{ path, entry.name }) catch continue;
-            
+
             const job = ScanJob{
                 .path = full_path,
                 .path_owned = true,
@@ -229,7 +226,7 @@ pub fn scanPathParallel(allocator: std.mem.Allocator, baseline: *BaselineDB, pat
         std.time.sleep(100 * std.time.ns_per_ms); // Sleep 100ms
 
         const current_processed = records_processed.load(.monotonic);
-        
+
         if (@import("builtin").mode == .Debug and current_processed != last_processed) {
             std.debug.print("[DEBUG] Processed {} records so far\n", .{current_processed});
             last_processed = current_processed;
@@ -246,7 +243,7 @@ pub fn scanPathParallel(allocator: std.mem.Allocator, baseline: *BaselineDB, pat
 
     // Signal workers to finish and wait for them
     work_queue.finish();
-    
+
     for (worker_threads) |*thread| {
         thread.join();
     }
@@ -300,8 +297,7 @@ pub fn scanPathWithStringPool(allocator: std.mem.Allocator, baseline: *BaselineD
     // Report string pool statistics
     if (@import("builtin").mode == .Debug) {
         const stats = path_pool.getStats();
-        std.debug.print("[DEBUG] String pool stats: {} interned strings, {} bytes saved\n", 
-                      .{ stats.base_stats.interned_strings, stats.base_stats.total_bytes_saved });
+        std.debug.print("[DEBUG] String pool stats: {} interned strings, {} bytes saved\n", .{ stats.base_stats.interned_strings, stats.base_stats.total_bytes_saved });
     }
 }
 
@@ -349,7 +345,7 @@ fn scanPathChildrenWithPool(allocator: std.mem.Allocator, baseline: *BaselineDB,
 
         // Intern the full path to reduce duplicates
         const interned_path = try path_pool.internPath(full_path);
-        
+
         const record = try createNodeRecord(allocator, interned_path, entry.kind);
         try baseline.addRecord(record);
 
@@ -745,110 +741,110 @@ test "createSpecialRecord basic functionality" {
 
 test "estimateDirectorySize basic functionality" {
     const allocator = testing.allocator;
-    
+
     // Create a temporary directory with some files
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
-    
+
     try tmp.dir.writeFile(.{ .sub_path = "file1.txt", .data = "content1" });
     try tmp.dir.writeFile(.{ .sub_path = "file2.txt", .data = "content2" });
     try tmp.dir.makeDir("subdir");
     try tmp.dir.writeFile(.{ .sub_path = "subdir/file3.txt", .data = "content3" });
-    
+
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
-    
+
     const estimated = try estimateDirectorySize(tmp_path);
-    
+
     // Should estimate more than 0 files
     try testing.expect(estimated > 0);
-    
+
     // Should be a reasonable estimate (multiplied by estimation factor)
     try testing.expect(estimated >= 30); // At least 3 entries * 10 multiplier
 }
 
 test "estimateDirectorySize handles empty directory" {
     const allocator = testing.allocator;
-    
+
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
-    
+
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
-    
+
     const estimated = try estimateDirectorySize(tmp_path);
-    
+
     // Empty directory should return 0
     try testing.expectEqual(@as(usize, 0), estimated);
 }
 
 test "scanPathAdaptive chooses sequential for small directories" {
     const allocator = testing.allocator;
-    
+
     // Create a small test directory
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
-    
+
     try tmp.dir.writeFile(.{ .sub_path = "small_file.txt", .data = "test content" });
-    
+
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
-    
+
     // Create baseline and scan
     var baseline = @import("database.zig").BaselineDB.init(allocator);
     defer baseline.deinit();
-    
+
     // This should complete without error and use sequential scanning
     try scanPathAdaptive(allocator, &baseline, tmp_path);
-    
+
     // Verify records were created
     try testing.expect(baseline.records.items.len >= 1);
 }
 
 test "scanPathWithStringPool basic functionality" {
     const allocator = testing.allocator;
-    
+
     // Create a test directory structure
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
-    
+
     try tmp.dir.writeFile(.{ .sub_path = "test1.txt", .data = "content1" });
     try tmp.dir.writeFile(.{ .sub_path = "test2.txt", .data = "content2" });
     try tmp.dir.makeDir("subdir");
     try tmp.dir.writeFile(.{ .sub_path = "subdir/test3.txt", .data = "content3" });
-    
+
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
-    
+
     // Create baseline and scan with string pooling
     var baseline = @import("database.zig").BaselineDB.init(allocator);
     defer baseline.deinit();
-    
+
     try scanPathWithStringPool(allocator, &baseline, tmp_path);
-    
+
     // Verify records were created
     try testing.expect(baseline.records.items.len >= 4); // Directory + 3 files
 }
 
 test "WorkQueue basic operations" {
     const allocator = testing.allocator;
-    
+
     var queue = WorkQueue.init(allocator);
     defer queue.deinit();
-    
+
     // Test initial state
     try testing.expect(queue.isEmpty());
-    
+
     // Test pushing jobs
     const job1 = ScanJob{
         .path = "test/path1",
         .path_owned = false,
         .is_directory = true,
     };
-    
+
     try queue.push(job1);
     try testing.expect(!queue.isEmpty());
-    
+
     // Test popping jobs
     const popped = queue.pop();
     try testing.expect(popped != null);
@@ -856,27 +852,27 @@ test "WorkQueue basic operations" {
         try testing.expectEqualStrings("test/path1", job.path);
         try testing.expect(job.is_directory);
     }
-    
+
     try testing.expect(queue.isEmpty());
 }
 
 test "WorkQueue handles multiple jobs" {
     const allocator = testing.allocator;
-    
+
     var queue = WorkQueue.init(allocator);
     defer queue.deinit();
-    
+
     // Push multiple jobs
     const jobs = [_]ScanJob{
         ScanJob{ .path = "path1", .path_owned = false, .is_directory = true },
         ScanJob{ .path = "path2", .path_owned = false, .is_directory = false },
         ScanJob{ .path = "path3", .path_owned = false, .is_directory = true },
     };
-    
+
     for (jobs) |job| {
         try queue.push(job);
     }
-    
+
     // Pop all jobs and verify order
     for (jobs) |expected_job| {
         const popped = queue.pop();
@@ -886,19 +882,19 @@ test "WorkQueue handles multiple jobs" {
             try testing.expectEqual(expected_job.is_directory, job.is_directory);
         }
     }
-    
+
     try testing.expect(queue.isEmpty());
 }
 
 test "WorkQueue finish functionality" {
     const allocator = testing.allocator;
-    
+
     var queue = WorkQueue.init(allocator);
     defer queue.deinit();
-    
+
     // Finish the queue
     queue.finish();
-    
+
     // Pop should return null for finished empty queue
     const popped = queue.pop();
     try testing.expect(popped == null);

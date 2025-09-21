@@ -121,23 +121,23 @@ pub const BaselineDB = struct {
         // Write records in batches for better performance
         var i: usize = 0;
         const batch_size = constants.DATABASE_IO.BATCH_SIZE;
-        
+
         while (i < self.records.items.len) {
             const end = @min(i + batch_size, self.records.items.len);
-            
+
             // Write a batch of records
             for (self.records.items[i..end]) |*record| {
                 try serializeRecord(writer, record);
             }
-            
+
             // Flush after each batch to prevent excessive memory usage
             try buffered_writer.flush();
-            
+
             if (@import("builtin").mode == .Debug and self.records.items.len > batch_size) {
                 const progress = (end * 100) / self.records.items.len;
                 std.debug.print("[DEBUG] Batch save progress: {}% ({}/{})\n", .{ progress, end, self.records.items.len });
             }
-            
+
             i = end;
         }
 
@@ -636,17 +636,17 @@ test "Database serialization round-trip with different record types" {
 
 test "BaselineDB saveToFileBatched basic functionality" {
     const allocator = testing.allocator;
-    
+
     var db = BaselineDB.init(allocator);
     defer db.deinit();
-    
+
     // Add multiple records to test batching
     var i: usize = 0;
     while (i < 1500) : (i += 1) { // More than BATCH_SIZE (1000)
         var path_buffer: [64]u8 = undefined;
         const path = try std.fmt.bufPrint(&path_buffer, "/test/file_{}.txt", .{i});
         const owned_path = try allocator.dupe(u8, path);
-        
+
         try db.addRecord(records.Record{
             .file = records.FileRecord{
                 .path = owned_path,
@@ -663,45 +663,45 @@ test "BaselineDB saveToFileBatched basic functionality" {
             },
         });
     }
-    
+
     const test_path = "test_batched.db";
-    
+
     // Test batched save
     try db.saveToFileBatched(test_path);
     defer std.fs.cwd().deleteFile(test_path) catch {};
-    
+
     // Verify the file was created
     var file = try std.fs.cwd().openFile(test_path, .{});
     file.close();
-    
+
     // Load and verify
     var loaded_db = try BaselineDB.loadFromFile(allocator, test_path);
     defer loaded_db.deinit();
-    
+
     try testing.expectEqual(@as(usize, 1500), loaded_db.records.items.len);
-    
+
     // Verify first and last records
     try testing.expect(loaded_db.records.items[0] == .file);
     try testing.expectEqualStrings("/test/file_0.txt", loaded_db.records.items[0].file.path);
-    
+
     try testing.expect(loaded_db.records.items[1499] == .file);
     try testing.expectEqualStrings("/test/file_1499.txt", loaded_db.records.items[1499].file.path);
 }
 
 test "BaselineDB saveToFileOptimized chooses correct method" {
     const allocator = testing.allocator;
-    
+
     // Test small database (should use regular save)
     var small_db = BaselineDB.init(allocator);
     defer small_db.deinit();
-    
+
     // Add fewer records than BATCH_SIZE
     var i: usize = 0;
     while (i < 10) : (i += 1) {
         var path_buffer: [64]u8 = undefined;
         const path = try std.fmt.bufPrint(&path_buffer, "/test/small_{}.txt", .{i});
         const owned_path = try allocator.dupe(u8, path);
-        
+
         try small_db.addRecord(records.Record{
             .file = records.FileRecord{
                 .path = owned_path,
@@ -718,22 +718,22 @@ test "BaselineDB saveToFileOptimized chooses correct method" {
             },
         });
     }
-    
+
     const small_test_path = "test_optimized_small.db";
     try small_db.saveToFileOptimized(small_test_path);
     defer std.fs.cwd().deleteFile(small_test_path) catch {};
-    
+
     // Test large database (should use batched save)
     var large_db = BaselineDB.init(allocator);
     defer large_db.deinit();
-    
+
     // Add more records than BATCH_SIZE
     i = 0;
     while (i < 1200) : (i += 1) {
         var path_buffer: [64]u8 = undefined;
         const path = try std.fmt.bufPrint(&path_buffer, "/test/large_{}.txt", .{i});
         const owned_path = try allocator.dupe(u8, path);
-        
+
         try large_db.addRecord(records.Record{
             .file = records.FileRecord{
                 .path = owned_path,
@@ -750,32 +750,32 @@ test "BaselineDB saveToFileOptimized chooses correct method" {
             },
         });
     }
-    
+
     const large_test_path = "test_optimized_large.db";
     try large_db.saveToFileOptimized(large_test_path);
     defer std.fs.cwd().deleteFile(large_test_path) catch {};
-    
+
     // Verify both files were created successfully
     var small_file = try std.fs.cwd().openFile(small_test_path, .{});
     small_file.close();
-    
+
     var large_file = try std.fs.cwd().openFile(large_test_path, .{});
     large_file.close();
 }
 
 test "BaselineDB saveToFileBatched produces same result as saveToFile" {
     const allocator = testing.allocator;
-    
+
     var db = BaselineDB.init(allocator);
     defer db.deinit();
-    
+
     // Add some test records
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         var path_buffer: [64]u8 = undefined;
         const path = try std.fmt.bufPrint(&path_buffer, "/test/compare_{}.txt", .{i});
         const owned_path = try allocator.dupe(u8, path);
-        
+
         try db.addRecord(records.Record{
             .file = records.FileRecord{
                 .path = owned_path,
@@ -792,33 +792,33 @@ test "BaselineDB saveToFileBatched produces same result as saveToFile" {
             },
         });
     }
-    
+
     const regular_path = "test_regular.db";
     const batched_path = "test_batched_compare.db";
-    
+
     // Save with both methods
     try db.saveToFile(regular_path);
     defer std.fs.cwd().deleteFile(regular_path) catch {};
-    
+
     try db.saveToFileBatched(batched_path);
     defer std.fs.cwd().deleteFile(batched_path) catch {};
-    
+
     // Load both and verify they're identical
     var regular_db = try BaselineDB.loadFromFile(allocator, regular_path);
     defer regular_db.deinit();
-    
+
     var batched_db = try BaselineDB.loadFromFile(allocator, batched_path);
     defer batched_db.deinit();
-    
+
     // Should have same number of records
     try testing.expectEqual(regular_db.records.items.len, batched_db.records.items.len);
     try testing.expectEqual(@as(usize, 100), regular_db.records.items.len);
-    
+
     // Verify all records are identical
     for (regular_db.records.items, batched_db.records.items) |regular_record, batched_record| {
         try testing.expect(regular_record == .file);
         try testing.expect(batched_record == .file);
-        
+
         try testing.expectEqualStrings(regular_record.file.path, batched_record.file.path);
         try testing.expectEqual(regular_record.file.size, batched_record.file.size);
         try testing.expectEqual(regular_record.file.inode, batched_record.file.inode);

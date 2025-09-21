@@ -699,6 +699,9 @@ test "Watcher initialization" {
     };
 
     var watcher = try Watcher.init(allocator, &app_config, watch_config);
+
+    // Initialize with fallback watcher to avoid platform-specific issues in tests
+    watcher.platform_data = .{ .fallback = try FallbackWatcher.init(allocator, &watcher) };
     defer watcher.deinit();
 
     try testing.expect(watcher.allocator.ptr == allocator.ptr);

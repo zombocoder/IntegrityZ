@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Zig](https://img.shields.io/badge/Zig-0.13.0-orange.svg)](https://ziglang.org/)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)](#)
+[![Dashboard](https://img.shields.io/badge/Dashboard-Live-success.svg)](https://integrityz.linkzip.app)
 
 **IntegrityZ** is a cross-platform **filesystem integrity monitoring tool** written in [Zig](https://ziglang.org).  
 It detects unauthorized changes to files, permissions, and metadata — helping you secure your system against tampering, malware, and insider threats.
@@ -82,6 +83,19 @@ integrityz config
 
 # Create default configuration file
 integrityz config --init
+```
+
+**Visualize results with the web dashboard:**
+
+```bash
+# Generate JSON report
+integrityz check --json > report.json
+
+# Option 1: Use the live dashboard
+# Visit https://integrityz.linkzip.app and drag your report.json file
+
+# Option 2: Use locally
+# Open web-dashboard/index.html in browser and drag the report file
 ```
 
 ---
@@ -173,10 +187,10 @@ integrityz/
 
 - [x] MVP: Baseline + scan + JSON report
 - [x] Configuration file support with patterns
+- [x] Web dashboard for JSON report visualization
 - [ ] Windows platform support
 - [ ] HTTP webhook integration for 3rd party systems
 - [ ] Realtime monitoring (inotify/kqueue/Windows API)
-- [ ] Optional Web dashboard
 
 ---
 

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntegrityZ Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .upload-area {
+            padding: 40px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .drop-zone {
+            border: 3px dashed #ddd;
+            border-radius: 12px;
+            padding: 60px 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .drop-zone-content {
+            font-size: 1.2em;
+            color: #666;
+        }
+
+        .drop-zone-icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+            color: #ddd;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .dashboard {
+            padding: 40px;
+            display: none;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .stat-card.success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .stat-card.warning {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        .stat-card.info {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            color: #333;
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .changes-section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .change-item {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .change-item.added {
+            border-left-color: #28a745;
+            background: #f8fff9;
+        }
+
+        .change-item.modified {
+            border-left-color: #ffc107;
+            background: #fffdf7;
+        }
+
+        .change-item.deleted {
+            border-left-color: #dc3545;
+            background: #fff8f8;
+        }
+
+        .change-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .change-path {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .change-type {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 500;
+            margin-left: 12px;
+        }
+
+        .change-details {
+            font-size: 0.9em;
+            color: #666;
+            font-style: italic;
+            margin-top: 4px;
+        }
+
+        .change-type.added {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+        }
+
+        .change-type.modified {
+            background: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+        }
+
+        .change-type.deleted {
+            background: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+
+        .no-changes {
+            text-align: center;
+            padding: 60px;
+            color: #28a745;
+            font-size: 1.2em;
+        }
+
+        .no-changes-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .error {
+            background: #ffe6e6;
+            border: 1px solid #ffb3b3;
+            color: #cc0000;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 IntegrityZ Dashboard</h1>
+            <p>Visualize filesystem integrity monitoring results</p>
+        </div>
+
+        <div class="upload-area">
+            <div class="drop-zone" onclick="document.getElementById('fileInput').click()">
+                <div class="drop-zone-content">
+                    <div class="drop-zone-icon">📁</div>
+                    <div>
+                        <strong>Drop your IntegrityZ JSON report here</strong><br>
+                        or click to browse files
+                    </div>
+                </div>
+            </div>
+            <input type="file" id="fileInput" accept=".json" />
+        </div>
+
+        <div class="dashboard" id="dashboard">
+            <div class="timestamp" id="timestamp"></div>
+            
+            <div class="stats-grid" id="statsGrid">
+                <!-- Stats will be populated here -->
+            </div>
+
+            <div class="changes-section" id="changesSection">
+                <!-- Changes will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.querySelector('.drop-zone');
+        const dashboard = document.getElementById('dashboard');
+
+        // File input handling
+        fileInput.addEventListener('change', handleFile);
+
+        // Drag and drop handling
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileContent(files[0]);
+            }
+        });
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileContent(file);
+            }
+        }
+
+        function handleFileContent(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    displayDashboard(data);
+                } catch (error) {
+                    showError('Invalid JSON file. Please upload a valid IntegrityZ report.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function displayDashboard(data) {
+            dashboard.style.display = 'block';
+            
+            // Update timestamp
+            document.getElementById('timestamp').textContent = 
+                `Report generated: ${new Date().toLocaleString()}`;
+
+            // Create stats
+            createStats(data);
+            
+            // Create changes visualization
+            createChangesSection(data);
+        }
+
+        function createStats(data) {
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = '';
+
+            const stats = [
+                {
+                    number: data.total_files_checked || 0,
+                    label: 'Files Checked',
+                    type: 'info'
+                },
+                {
+                    number: data.baseline_records || 0,
+                    label: 'Baseline Records',
+                    type: 'info'
+                },
+                {
+                    number: data.changes_count || 0,
+                    label: 'Changes Detected',
+                    type: data.has_changes ? 'warning' : 'success'
+                },
+                {
+                    number: data.current_records || 0,
+                    label: 'Current Records',
+                    type: 'info'
+                }
+            ];
+
+            stats.forEach(stat => {
+                const card = document.createElement('div');
+                card.className = `stat-card ${stat.type}`;
+                card.innerHTML = `
+                    <div class="stat-number">${stat.number}</div>
+                    <div class="stat-label">${stat.label}</div>
+                `;
+                statsGrid.appendChild(card);
+            });
+        }
+
+        function createChangesSection(data) {
+            const changesSection = document.getElementById('changesSection');
+            changesSection.innerHTML = '';
+
+            if (!data.has_changes || !data.changes || data.changes.length === 0) {
+                changesSection.innerHTML = `
+                    <div class="no-changes">
+                        <div class="no-changes-icon">✅</div>
+                        <div>No integrity violations detected!</div>
+                        <div style="margin-top: 10px; font-size: 0.9em; opacity: 0.7;">
+                            All files match the baseline.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const title = document.createElement('div');
+            title.className = 'section-title';
+            title.textContent = `Changes Detected (${data.changes.length})`;
+            changesSection.appendChild(title);
+
+            data.changes.forEach(change => {
+                const item = document.createElement('div');
+                item.className = `change-item ${change.type}`;
+                
+                const typeLabel = change.type.charAt(0).toUpperCase() + change.type.slice(1);
+                
+                let content = `
+                    <div class="change-header">
+                        <div class="change-path">${change.path}</div>
+                        <div class="change-type ${change.type}">${typeLabel}</div>
+                    </div>
+                `;
+                
+                // Add details if available
+                if (change.details) {
+                    content += `<div class="change-details">${change.details}</div>`;
+                }
+                
+                item.innerHTML = content;
+                changesSection.appendChild(item);
+            });
+        }
+
+        function showError(message) {
+            const dashboard = document.getElementById('dashboard');
+            dashboard.style.display = 'block';
+            dashboard.innerHTML = `
+                <div class="error">
+                    <strong>Error:</strong> ${message}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

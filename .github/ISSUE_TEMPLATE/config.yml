@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/zombocoder/IntegrityZ/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 📚 Documentation
+    url: https://github.com/zombocoder/IntegrityZ/blob/main/README.md
+    about: Read the documentation and usage guides
+  - name: 🤝 Contributing Guide
+    url: https://github.com/zombocoder/IntegrityZ/blob/main/CONTRIBUTING.md
+    about: Learn how to contribute to IntegrityZ

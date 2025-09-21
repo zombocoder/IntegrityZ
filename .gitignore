@@ -1,0 +1,29 @@
+# Build outputs
+zig-out/
+zig-cache/
+.zig-cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Ignore everything in data directory except .gitkeep
+/data/*
+!/data/.gitkeep
+
+# Ignore everything in keys directory except .gitkeep
+/keys/*
+!/keys/.gitkeep
+
+# Ignore everything in zig directory except download.sh and .gitkeep
+/zig/*
+!/zig/download.sh
+!/zig/.gitkeep
+
+# Database and socket files
+*.db
+*.sock
+
+*.conf

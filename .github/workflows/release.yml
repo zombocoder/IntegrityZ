@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+            zig-target: x86_64-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-linux
+            zig-target: aarch64-linux-gnu
+          - os: macos-latest
+            target: x86_64-macos
+            zig-target: x86_64-macos
+          - os: macos-latest
+            target: aarch64-macos
+            zig-target: aarch64-macos
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: "0.13.0"
+
+      - name: Cache Zig dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/zig
+            .zig-cache
+          key: ${{ runner.os }}-zig-release-0.13.0-${{ hashFiles('build.zig', 'build.zig.zon') }}
+          restore-keys: |
+            ${{ runner.os }}-zig-release-0.13.0-
+
+      - name: Check code formatting
+        run: zig fmt --check src/
+
+      - name: Run tests
+        run: zig build test
+
+      - name: Build release binary
+        run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.zig-target }}
+
+      - name: Create release package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p release/integrityz-${{ matrix.target }}
+          cp zig-out/bin/integrityz release/integrityz-${{ matrix.target }}/
+          cp README.md release/integrityz-${{ matrix.target }}/ || echo "README.md not found"
+          cp LICENSE release/integrityz-${{ matrix.target }}/ || echo "LICENSE not found"
+          cp CONTRIBUTING.md release/integrityz-${{ matrix.target }}/ || echo "CONTRIBUTING.md not found"
+          cp Makefile release/integrityz-${{ matrix.target }}/ || echo "Makefile not found"
+          cd release
+          tar -czf integrityz-${{ matrix.target }}.tar.gz integrityz-${{ matrix.target }}/
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: release/integrityz-${{ matrix.target }}.tar.gz
+          
+      - name: Upload artifacts (for manual download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrityz-${{ matrix.target }}
+          path: release/integrityz-${{ matrix.target }}.tar.gz
+          retention-days: 30

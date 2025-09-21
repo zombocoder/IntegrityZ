@@ -189,6 +189,30 @@
             margin-top: 4px;
         }
 
+        .checksum-info {
+            margin-top: 10px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.8em;
+            background: rgba(0,0,0,0.05);
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        .checksum-row {
+            margin-bottom: 4px;
+        }
+
+        .checksum-label {
+            font-weight: bold;
+            display: inline-block;
+            width: 40px;
+        }
+
+        .checksum-value {
+            color: #555;
+            word-break: break-all;
+        }
+
         .change-type.added {
             background: rgba(40, 167, 69, 0.1);
             color: #28a745;
@@ -316,8 +340,9 @@
             dashboard.style.display = 'block';
             
             // Update timestamp
+            const timestamp = data.timestamp ? new Date(data.timestamp * 1000).toLocaleString() : new Date().toLocaleString();
             document.getElementById('timestamp').textContent = 
-                `Report generated: ${new Date().toLocaleString()}`;
+                `Report generated: ${timestamp}`;
 
             // Create stats
             createStats(data);
@@ -402,6 +427,18 @@
                 // Add details if available
                 if (change.details) {
                     content += `<div class="change-details">${change.details}</div>`;
+                }
+                
+                // Add checksum information for modified files
+                if (change.type === 'modified' && (change.old_checksum || change.new_checksum)) {
+                    content += '<div class="checksum-info">';
+                    if (change.old_checksum) {
+                        content += `<div class="checksum-row"><span class="checksum-label">Old:</span> <span class="checksum-value">${change.old_checksum}</span></div>`;
+                    }
+                    if (change.new_checksum) {
+                        content += `<div class="checksum-row"><span class="checksum-label">New:</span> <span class="checksum-value">${change.new_checksum}</span></div>`;
+                    }
+                    content += '</div>';
                 }
                 
                 item.innerHTML = content;

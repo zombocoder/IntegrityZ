@@ -26,6 +26,24 @@ pub const Config = struct {
     /// Default paths to scan if none specified
     default_scan_paths: std.ArrayList([]const u8),
 
+    /// Webhook URL for change notifications (optional)
+    webhook_url: ?[]const u8,
+
+    /// Whether webhook_url was allocated and should be freed
+    webhook_url_owned: bool,
+
+    /// Webhook timeout in seconds
+    webhook_timeout: u32,
+
+    /// Watch mode: minimum interval between integrity checks (seconds)
+    watch_check_interval: u32,
+
+    /// Watch mode: maximum events to batch before forcing integrity check
+    watch_max_event_batch: u32,
+
+    /// Watch mode: enable recursive monitoring
+    watch_recursive: bool,
+
     /// Allocator used for dynamic allocations
     allocator: std.mem.Allocator,
 
@@ -41,6 +59,12 @@ pub const Config = struct {
             .max_file_size = 0, // No limit by default
             .follow_symlinks = false,
             .default_scan_paths = std.ArrayList([]const u8).init(allocator),
+            .webhook_url = null,
+            .webhook_url_owned = false,
+            .webhook_timeout = 30,
+            .watch_check_interval = 5,
+            .watch_max_event_batch = 10,
+            .watch_recursive = true,
             .allocator = allocator,
         };
     }
@@ -66,6 +90,13 @@ pub const Config = struct {
         // Free baseline_path if it was allocated
         if (self.baseline_path_owned) {
             self.allocator.free(self.baseline_path);
+        }
+
+        // Free webhook_url if it was allocated
+        if (self.webhook_url_owned) {
+            if (self.webhook_url) |url| {
+                self.allocator.free(url);
+            }
         }
     }
 
@@ -133,6 +164,22 @@ pub const Config = struct {
             self.follow_symlinks = std.mem.eql(u8, value, "true");
         } else if (std.mem.eql(u8, key, "default_scan_path")) {
             try self.default_scan_paths.append(try self.allocator.dupe(u8, value));
+        } else if (std.mem.eql(u8, key, "webhook_url")) {
+            if (self.webhook_url_owned) {
+                if (self.webhook_url) |url| {
+                    self.allocator.free(url);
+                }
+            }
+            self.webhook_url = try self.allocator.dupe(u8, value);
+            self.webhook_url_owned = true;
+        } else if (std.mem.eql(u8, key, "webhook_timeout")) {
+            self.webhook_timeout = try std.fmt.parseInt(u32, value, 10);
+        } else if (std.mem.eql(u8, key, "watch_check_interval")) {
+            self.watch_check_interval = try std.fmt.parseInt(u32, value, 10);
+        } else if (std.mem.eql(u8, key, "watch_max_event_batch")) {
+            self.watch_max_event_batch = try std.fmt.parseInt(u32, value, 10);
+        } else if (std.mem.eql(u8, key, "watch_recursive")) {
+            self.watch_recursive = std.mem.eql(u8, value, "true");
         }
         // Ignore unknown keys for forward compatibility
     }
@@ -248,6 +295,17 @@ pub const Config = struct {
         try writer.print("max_file_size={}\n", .{self.max_file_size});
         try writer.print("follow_symlinks={}\n", .{self.follow_symlinks});
 
+        // Write webhook settings
+        if (self.webhook_url) |url| {
+            try writer.print("webhook_url={s}\n", .{url});
+        }
+        try writer.print("webhook_timeout={}\n", .{self.webhook_timeout});
+
+        // Write watch mode settings
+        try writer.print("watch_check_interval={}\n", .{self.watch_check_interval});
+        try writer.print("watch_max_event_batch={}\n", .{self.watch_max_event_batch});
+        try writer.print("watch_recursive={}\n", .{self.watch_recursive});
+
         // Write default scan paths
         if (self.default_scan_paths.items.len > 0) {
             try writer.writeAll("\n# Default paths to scan if none specified\n");
@@ -276,6 +334,14 @@ test "config initialization" {
     try testing.expect(config.include_patterns.items.len == 0);
     try testing.expect(config.max_file_size == 0);
     try testing.expect(config.follow_symlinks == false);
+
+    // Test new webhook and watch mode defaults
+    try testing.expect(config.webhook_url == null);
+    try testing.expect(config.webhook_url_owned == false);
+    try testing.expect(config.webhook_timeout == 30);
+    try testing.expect(config.watch_check_interval == 5);
+    try testing.expect(config.watch_max_event_batch == 10);
+    try testing.expect(config.watch_recursive == true);
 }
 
 test "pattern matching" {
@@ -309,4 +375,85 @@ test "config file parsing" {
     try testing.expect(config.exclude_patterns.items.len >= 2); // Including defaults
     try testing.expect(config.max_file_size == 1000000);
     try testing.expect(config.follow_symlinks == true);
+}
+
+test "webhook and watch mode config parsing" {
+    var config = Config.init(testing.allocator);
+    defer config.deinit();
+
+    const test_config =
+        \\# Webhook and watch mode config
+        \\webhook_url=https://example.com/webhook
+        \\webhook_timeout=45
+        \\watch_check_interval=10
+        \\watch_max_event_batch=25
+        \\watch_recursive=false
+    ;
+
+    try config.parseConfigContent(test_config);
+
+    try testing.expect(config.webhook_url != null);
+    try testing.expectEqualStrings("https://example.com/webhook", config.webhook_url.?);
+    try testing.expect(config.webhook_url_owned == true);
+    try testing.expect(config.webhook_timeout == 45);
+    try testing.expect(config.watch_check_interval == 10);
+    try testing.expect(config.watch_max_event_batch == 25);
+    try testing.expect(config.watch_recursive == false);
+}
+
+test "webhook url memory management" {
+    var config = Config.init(testing.allocator);
+    defer config.deinit();
+
+    // Test setting webhook URL multiple times
+    const test_config1 =
+        \\webhook_url=https://first.com/webhook
+    ;
+
+    const test_config2 =
+        \\webhook_url=https://second.com/webhook
+    ;
+
+    try config.parseConfigContent(test_config1);
+    try testing.expectEqualStrings("https://first.com/webhook", config.webhook_url.?);
+
+    // Parse second config - should free the first URL
+    try config.parseConfigContent(test_config2);
+    try testing.expectEqualStrings("https://second.com/webhook", config.webhook_url.?);
+    try testing.expect(config.webhook_url_owned == true);
+}
+
+test "config save includes new settings" {
+    var config = Config.init(testing.allocator);
+    defer config.deinit();
+
+    // Set some webhook and watch mode values
+    config.webhook_url = "https://test.com/hook";
+    config.webhook_timeout = 60;
+    config.watch_check_interval = 15;
+    config.watch_max_event_batch = 50;
+    config.watch_recursive = false;
+
+    // Test that saveToFile includes the new settings
+    const temp_file = "/tmp/test_config_save.conf";
+    try config.saveToFile(temp_file);
+
+    // Read the file back and verify content
+    const file = std.fs.cwd().openFile(temp_file, .{}) catch |err| {
+        std.debug.print("Failed to open test config file: {}\n", .{err});
+        return err;
+    };
+    defer file.close();
+    defer std.fs.cwd().deleteFile(temp_file) catch {};
+
+    var buffer: [2048]u8 = undefined;
+    const bytes_read = try file.readAll(&buffer);
+    const output = buffer[0..bytes_read];
+
+    // Check that new settings appear in output
+    try testing.expect(std.mem.indexOf(u8, output, "webhook_url=https://test.com/hook") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "webhook_timeout=60") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "watch_check_interval=15") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "watch_max_event_batch=50") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "watch_recursive=false") != null);
 }

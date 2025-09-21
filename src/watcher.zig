@@ -426,7 +426,7 @@ const LinuxWatcher = struct {
 };
 
 /// macOS/BSD-specific watcher using kqueue
-const DarwinWatcher = struct {
+const DarwinWatcher = if (builtin.os.tag == .macos or builtin.os.tag == .freebsd or builtin.os.tag == .netbsd or builtin.os.tag == .openbsd) struct {
     watcher: *Watcher,
     kqueue_fd: i32,
     file_descriptors: std.AutoHashMap(i32, []const u8),
@@ -479,23 +479,17 @@ const DarwinWatcher = struct {
             return;
         };
 
-        const kevent_change = switch (builtin.os.tag) {
-            .macos, .freebsd, .netbsd, .openbsd => std.posix.Kevent{
-                .ident = @intCast(file_fd),
-                .filter = std.c.EVFILT_VNODE,
-                .flags = std.c.EV_ADD | std.c.EV_CLEAR,
-                .fflags = std.c.NOTE_DELETE | std.c.NOTE_WRITE | std.c.NOTE_EXTEND |
-                    std.c.NOTE_ATTRIB | std.c.NOTE_RENAME,
-                .data = 0,
-                .udata = 0,
-            },
-            else => @compileError("DarwinWatcher should only be used on Darwin/BSD platforms"),
+        const kevent_change = std.posix.Kevent{
+            .ident = @intCast(file_fd),
+            .filter = std.c.EVFILT_VNODE,
+            .flags = std.c.EV_ADD | std.c.EV_CLEAR,
+            .fflags = std.c.NOTE_DELETE | std.c.NOTE_WRITE | std.c.NOTE_EXTEND |
+                std.c.NOTE_ATTRIB | std.c.NOTE_RENAME,
+            .data = 0,
+            .udata = 0,
         };
 
-        _ = switch (builtin.os.tag) {
-            .macos, .freebsd, .netbsd, .openbsd => try std.posix.kevent(self.kqueue_fd, &[_]std.posix.Kevent{kevent_change}, &[_]std.posix.Kevent{}, null),
-            else => @compileError("DarwinWatcher should only be used on Darwin/BSD platforms"),
-        };
+        _ = try std.posix.kevent(self.kqueue_fd, &[_]std.posix.Kevent{kevent_change}, &[_]std.posix.Kevent{}, null);
         try self.file_descriptors.put(file_fd, try self.watcher.allocator.dupe(u8, file_path));
     }
 
@@ -528,42 +522,54 @@ const DarwinWatcher = struct {
     }
 
     fn processEvents(self: *Self) !void {
-        switch (builtin.os.tag) {
-            .macos, .freebsd, .netbsd, .openbsd => {
-                var events: [10]std.posix.Kevent = undefined;
-                const timeout = std.posix.timespec{ .tv_sec = 0, .tv_nsec = 100 * std.time.ns_per_ms };
+        var events: [10]std.posix.Kevent = undefined;
+        const timeout = std.posix.timespec{ .tv_sec = 0, .tv_nsec = 100 * std.time.ns_per_ms };
 
-                const nevents = std.posix.kevent(self.kqueue_fd, &[_]std.posix.Kevent{}, &events, &timeout) catch {
-                    // Handle timeout or other errors gracefully
-                    return;
-                };
+        const nevents = std.posix.kevent(self.kqueue_fd, &[_]std.posix.Kevent{}, &events, &timeout) catch {
+            // Handle timeout or other errors gracefully
+            return;
+        };
 
-                for (events[0..nevents]) |event| {
-                    if (self.file_descriptors.get(@intCast(event.ident))) |file_path| {
-                        // Determine event type based on kqueue flags
-                        const event_type: EventType = if (event.fflags & std.c.NOTE_DELETE != 0) .deleted else if (event.fflags & std.c.NOTE_WRITE != 0 or event.fflags & std.c.NOTE_EXTEND != 0) .modified else if (event.fflags & std.c.NOTE_ATTRIB != 0) .permission_changed else .modified;
+        for (events[0..nevents]) |event| {
+            if (self.file_descriptors.get(@intCast(event.ident))) |file_path| {
+                // Determine event type based on kqueue flags
+                const event_type: EventType = if (event.fflags & std.c.NOTE_DELETE != 0) .deleted else if (event.fflags & std.c.NOTE_WRITE != 0 or event.fflags & std.c.NOTE_EXTEND != 0) .modified else if (event.fflags & std.c.NOTE_ATTRIB != 0) .permission_changed else .modified;
 
-                        try self.watcher.addEvent(file_path, event_type);
-                    }
-                }
-            },
-            else => @compileError("DarwinWatcher should only be used on Darwin/BSD platforms"),
+                try self.watcher.addEvent(file_path, event_type);
+            }
         }
     }
 
     fn mapDarwinEventType(self: *Self, fflags: u32) EventType {
         _ = self;
-        switch (builtin.os.tag) {
-            .macos, .freebsd, .netbsd, .openbsd => {
-                if (fflags & std.c.NOTE_DELETE != 0) return .deleted;
-                if (fflags & std.c.NOTE_WRITE != 0) return .modified;
-                if (fflags & std.c.NOTE_EXTEND != 0) return .modified;
-                if (fflags & std.c.NOTE_ATTRIB != 0) return .permission_changed;
-                if (fflags & std.c.NOTE_RENAME != 0) return .moved;
-                return .modified; // Default fallback
-            },
-            else => @compileError("DarwinWatcher should only be used on Darwin/BSD platforms"),
-        }
+        if (fflags & std.c.NOTE_DELETE != 0) return .deleted;
+        if (fflags & std.c.NOTE_WRITE != 0) return .modified;
+        if (fflags & std.c.NOTE_EXTEND != 0) return .modified;
+        if (fflags & std.c.NOTE_ATTRIB != 0) return .permission_changed;
+        if (fflags & std.c.NOTE_RENAME != 0) return .moved;
+        return .modified; // Default fallback
+    }
+} else struct {
+    // Stub implementation for non-Darwin platforms
+    const Self = @This();
+
+    fn init(allocator: std.mem.Allocator, watcher: *Watcher) !Self {
+        _ = allocator;
+        _ = watcher;
+        return Self{};
+    }
+
+    fn deinit(self: *Self) void {
+        _ = self;
+    }
+
+    fn addWatch(self: *Self, path: []const u8) !void {
+        _ = self;
+        _ = path;
+    }
+
+    fn processEvents(self: *Self) !void {
+        _ = self;
     }
 };
 

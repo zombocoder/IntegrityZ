@@ -52,6 +52,7 @@ pub fn build(b: *std.Build) void {
         "src/reporter.zig", // Reporting and output formatting tests
         "src/config.zig", // Configuration parsing and validation tests
         "src/watcher.zig", // Filesystem watching and monitoring tests
+        "src/string_pool.zig", // String interning and memory optimization tests
     };
 
     // Create test step that runs all unit tests across modules

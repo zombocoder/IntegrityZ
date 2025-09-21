@@ -187,7 +187,7 @@ fn scanMultiplePaths(allocator: std.mem.Allocator, paths: [][]const u8) !databas
             try std.fs.cwd().realpathAlloc(allocator, path);
         defer allocator.free(absolute_path);
 
-        try scanner.scanPath(allocator, &db, absolute_path);
+        try scanner.scanPathAdaptive(allocator, &db, absolute_path);
     }
 
     return db;

@@ -2,6 +2,7 @@
 zig-out/
 zig-cache/
 .zig-cache/
+docs/
 
 # OS files
 .DS_Store

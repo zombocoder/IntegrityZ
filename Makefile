@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-.PHONY: all build build-release clean test fmt fmt-check download_zig
+.PHONY: all build build-release clean test fmt fmt-check docs download_zig
 
 # Default target
 all: build
@@ -47,6 +47,13 @@ fmt-check: download_zig
 	@echo "Checking code formatting..."
 	@./zig/zig fmt --check src/
 
+# Generate documentation
+docs: download_zig
+	@echo "Generating documentation..."
+	@rm -rf docs zig-out/docs
+	@mkdir -p docs
+	@./zig/zig test src/main.zig -femit-docs=docs/ --test-no-exec 2>/dev/null || echo "Documentation generated with warnings"
+
 # Stop the running cluster
 stop:
 	@echo "Stopping IntegrityZ cluster..."
@@ -62,6 +69,7 @@ help:
 	@echo "  make test                 - Run the complete test suite"
 	@echo "  make fmt                  - Format all source code using Zig formatter"
 	@echo "  make fmt-check            - Check if source code is properly formatted"
+	@echo "  make docs                 - Generate documentation"
 	@echo "  make stop                 - Stop the running cluster"
 	@echo "  make download_zig         - Download the Zig compiler if not present"
 	@echo "  make help                 - Display this help message"

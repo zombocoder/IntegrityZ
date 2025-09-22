@@ -169,7 +169,7 @@ fn dirEntryLessThan(_: void, a: DirEntry, b: DirEntry) bool {
 /// Supports files, directories, symbolic links, and special files
 fn computeChildDigest(allocator: std.mem.Allocator, path: []const u8, kind: std.fs.File.Kind) ![constants.HASH_DIGEST_LENGTH]u8 {
     return switch (kind) {
-        .file => crypto.blake3HashFile(path, allocator) catch std.mem.zeroes([constants.HASH_DIGEST_LENGTH]u8),
+        .file => crypto.blake3HashFileAdaptive(path, allocator) catch std.mem.zeroes([constants.HASH_DIGEST_LENGTH]u8),
         .directory => std.mem.zeroes([constants.HASH_DIGEST_LENGTH]u8), // Avoid recursion for now
         .sym_link => blk: {
             var buffer: [std.fs.MAX_PATH_BYTES]u8 = undefined;

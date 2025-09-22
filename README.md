@@ -12,7 +12,8 @@ It detects unauthorized changes to files, permissions, and metadata — helping 
 
 IntegrityZ is a modern alternative to classic tools like Tripwire or AIDE, but with:
 
-- ⚡ **BLAKE3 hashing** for ultra-fast checksum validation
+- ⚡ **BLAKE3 hashing** with adaptive buffer sizing for ultra-fast checksum validation
+- 🚀 **Performance optimizations** including parallel scanning and string pooling
 - 🧩 **Modular design** with clear CLI commands
 - 📊 **JSON output support** for automation and integration
 - 🖥️ **Cross-compilation** (build once, run anywhere)
@@ -33,7 +34,12 @@ IntegrityZ is a modern alternative to classic tools like Tripwire or AIDE, but w
 - **Real-time monitoring** with `inotify` (Linux), `kqueue` (BSD/macOS)
 - **HTTP webhook notifications** for instant alerts
 - **Web dashboard** for visualizing integrity reports
-- **Comprehensive test suite** with 169+ unit tests
+- **Performance optimizations** for large filesystems:
+  - Adaptive buffer sizing based on storage type (SSD/HDD/Network)
+  - Parallel directory traversal with worker pools
+  - String interning for memory optimization
+  - Batched database I/O operations
+- **Comprehensive test suite** with 190+ unit tests
 
 ---
 
@@ -211,7 +217,11 @@ integrityz/
 │   ├── watcher.zig  # Real-time filesystem monitoring
 │   ├── checker.zig  # Integrity checking logic
 │   ├── reporter.zig # JSON reporting with timestamps
-│   └── config.zig   # Configuration management
+│   ├── config.zig   # Configuration management
+│   ├── crypto.zig   # BLAKE3 hashing with adaptive optimizations
+│   ├── scanner.zig  # Parallel filesystem scanning
+│   ├── string_pool.zig # String interning for memory optimization
+│   └── database.zig # Batched I/O operations
 ├── web-dashboard/   # Visualization dashboard
 ├── build.zig        # Zig build script with comprehensive tests
 ├── Makefile         # Build automation
@@ -227,16 +237,22 @@ integrityz/
 - [x] Web dashboard for JSON report visualization
 - [x] HTTP webhook integration for 3rd party systems
 - [x] Real-time monitoring (inotify/kqueue)
-- [x] Comprehensive test suite (169+ tests)
+- [x] Comprehensive test suite (190+ tests)
 - [x] Enhanced JSON reports with timestamps and checksums
+- [x] **Performance optimization for large filesystems**
+  - [x] Adaptive buffer sizing based on storage type detection
+  - [x] Parallel directory traversal with configurable worker pools
+  - [x] String interning and memory pooling for path optimization
+  - [x] Batched database I/O operations
+  - [x] Large file handling optimizations
 - [ ] Windows platform support (ReadDirectoryChangesW)
-- [ ] Performance optimization for large filesystems
+- [ ] Advanced performance profiling and benchmarking tools
 
 ---
 
 ## 🧪 Testing & Development
 
-IntegrityZ includes a comprehensive test suite with 169+ unit tests covering all modules:
+IntegrityZ includes a comprehensive test suite with 190+ unit tests covering all modules:
 
 ### Run Tests
 
@@ -256,7 +272,11 @@ make test
 - **checker.zig**: Integrity comparison, consolidated change detection 
 - **reporter.zig**: JSON generation, timestamp handling, checksum formatting
 - **config.zig**: Configuration parsing, webhook settings, memory management
-- **All core modules**: Crypto, records, database, scanner, utilities
+- **crypto.zig**: Adaptive hashing, storage type detection, buffer optimization
+- **scanner.zig**: Parallel traversal, worker pools, string pooling integration
+- **string_pool.zig**: String interning, path optimization, memory management
+- **database.zig**: Batched I/O operations, performance optimization
+- **All core modules**: Records, baseline management, utilities
 
 ### Available Make Targets
 

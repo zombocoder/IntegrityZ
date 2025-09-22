@@ -101,7 +101,7 @@ fn handleInit(allocator: std.mem.Allocator, app_config: *const config.Config, pa
 
     // Save baseline to file using configured path
     const baseline_path = app_config.baseline_path;
-    try db.saveToFile(baseline_path);
+    try db.saveToFileOptimized(baseline_path);
     print("✓ Baseline created: {} files in {s}\n", .{ db.records.items.len, baseline_path });
 }
 

@@ -48,7 +48,7 @@ IntegrityZ is a modern alternative to classic tools like Tripwire or AIDE, but w
 ### Build
 
 ```bash
-git clone https://github.com/yourname/integrityz.git
+git clone https://github.com/zombocoder/IntegrityZ.git
 cd integrityz
 make build
 ```
